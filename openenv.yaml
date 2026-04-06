@@ -1,0 +1,106 @@
+spec_version: 1
+name: drone_delivery_env
+version: 2.0.0
+description: >
+  Drone delivery path optimization environment. An LLM agent plans delivery
+  routes across real city coordinates, managing weight capacity, battery limits,
+  and multi-drone coordination for heavy packages requiring simultaneous visits.
+  Supports 7 world cities across 4 continents with easy / medium / hard tiers.
+
+type: gym
+runtime: docker
+
+app:
+  module: server.app
+  port: 8000
+
+client:
+  class_name: DroneDeliveryEnv
+  module: drone_delivery_env.client
+
+action:
+  class_name: DroneAction
+  module: drone_delivery_env.models
+
+observation:
+  class_name: DroneObservation
+  module: drone_delivery_env.models
+
+tasks:
+  - id: pune_easy
+    difficulty: easy
+    description: "1 drone, 1 delivery, Pune"
+  - id: pune_medium
+    difficulty: medium
+    description: "2 drones, 3 deliveries, Swargate 7kg needs 2 drones simultaneously, Pune"
+  - id: pune_hard
+    difficulty: hard
+    description: "3 drones, 6 deliveries, Swargate 9kg needs 3 drone trips, Pune"
+  - id: mumbai_easy
+    difficulty: easy
+    description: "1 drone, 1 delivery, Mumbai"
+  - id: mumbai_medium
+    difficulty: medium
+    description: "2 drones, 3 deliveries, Andheri 9kg needs 2 drones simultaneously, Mumbai"
+  - id: mumbai_hard
+    difficulty: hard
+    description: "3 drones, 6 deliveries, multi-drone coordination for heavy packages, Mumbai"
+  - id: bangalore_easy
+    difficulty: easy
+    description: "1 drone, 1 delivery, Bangalore"
+  - id: bangalore_medium
+    difficulty: medium
+    description: "2 drones, 3 deliveries, Hebbal 7.5kg needs 2 drones simultaneously, Bangalore"
+  - id: bangalore_hard
+    difficulty: hard
+    description: "3 drones, 6 deliveries, Hebbal 9kg needs 3 drone trips, Bangalore"
+  - id: new_york_easy
+    difficulty: easy
+    description: "1 drone, 1 delivery, New York"
+  - id: new_york_medium
+    difficulty: medium
+    description: "2 drones, 3 deliveries, Empire State 8kg needs 2 drones simultaneously, New York"
+  - id: new_york_hard
+    difficulty: hard
+    description: "3 drones, 8 deliveries, several heavy packages requiring multi-drone coordination, New York"
+  - id: london_easy
+    difficulty: easy
+    description: "1 drone, 1 delivery, London"
+  - id: london_medium
+    difficulty: medium
+    description: "2 drones, 3 deliveries, Westminster 8.5kg needs 2 drones simultaneously, London"
+  - id: london_hard
+    difficulty: hard
+    description: "3 drones, 6 deliveries, Westminster 9kg needs 3 drone trips, London"
+  - id: tokyo_easy
+    difficulty: easy
+    description: "1 drone, 1 delivery, Tokyo"
+  - id: tokyo_medium
+    difficulty: medium
+    description: "2 drones, 3 deliveries, Shibuya 8kg needs 2 drones simultaneously, Tokyo"
+  - id: tokyo_hard
+    difficulty: hard
+    description: "3 drones, 6 deliveries, Shibuya 9kg needs 3 drone trips, Tokyo"
+  - id: dubai_easy
+    difficulty: easy
+    description: "1 drone, 1 delivery, Dubai"
+  - id: dubai_medium
+    difficulty: medium
+    description: "2 drones, 3 deliveries, Deira 8kg needs 2 drones simultaneously, Dubai"
+  - id: dubai_hard
+    difficulty: hard
+    description: "3 drones, 6 deliveries, Deira 9kg needs 3 drone trips, Dubai"
+
+reward:
+  type: continuous
+  range: [0.0, 1.0]
+  components:
+    - name: delivery_completion
+      weight: 0.55
+      description: "Fraction of deliveries successfully visited within 300m"
+    - name: battery_compliance
+      weight: 0.25
+      description: "Total path distance within battery limit per drone"
+    - name: efficiency_bonus
+      weight: 0.20
+      description: "Penalises excessive recharge trips vs optimal routing"

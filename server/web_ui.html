@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>🚁 Drone Delivery Environment</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',sans-serif; background:#0f1117; color:#e0e0e0; height:100vh; display:flex; flex-direction:column; }
+  header { background:linear-gradient(135deg,#1a1f2e,#2d3561); padding:8px 14px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #3a4080; flex-wrap:wrap; }
+  header h1 { font-size:1.1rem; color:#7eb8f7; white-space:nowrap; }
+  .controls { display:flex; gap:6px; flex-wrap:wrap; align-items:center; flex:1; }
+  select,button,input[type=number] { background:#1e2435; color:#e0e0e0; border:1px solid #3a4080; border-radius:6px; padding:5px 10px; font-size:0.8rem; cursor:pointer; transition:all 0.2s; }
+  button.primary { background:#2d6ae0; border-color:#4a85f5; color:white; font-weight:600; }
+  button.submit-btn { background:#27ae60; border-color:#2ecc71; color:white; font-weight:600; }
+  button.danger { background:#8b1a1a; border-color:#e74c3c; color:#ffaaaa; }
+  button.warn { background:#3a2a0a; border-color:#f39c12; color:#f39c12; }
+  .main { display:flex; flex:1; overflow:hidden; }
+  #map { flex:1; }
+  .sidebar { width:290px; background:#13161f; border-left:1px solid #2a2f45; display:flex; flex-direction:column; overflow-y:auto; }
+  .sidebar-section { padding:10px 12px; border-bottom:1px solid #2a2f45; }
+  .sidebar-section h3 { font-size:0.7rem; text-transform:uppercase; letter-spacing:1px; color:#7eb8f7; margin-bottom:7px; }
+  .mode-buttons { display:flex; gap:5px; }
+  .mode-btn { flex:1; padding:7px 3px; border-radius:6px; border:1px solid #3a4080; background:#1a1f2e; color:#bbb; font-size:0.7rem; cursor:pointer; text-align:center; transition:all 0.2s; }
+  .mode-btn.active.depot { border-color:#3498db; color:#3498db; background:#0d1f30; font-weight:600; }
+  .mode-btn.active.delivery { border-color:#2ecc71; color:#2ecc71; background:#0d2a1a; font-weight:600; }
+  .mode-btn.active.nfz { border-color:#e74c3c; color:#e74c3c; background:#2a0d0d; font-weight:600; }
+  .mode-btn.active.path { border-color:#f39c12; color:#f39c12; background:#2a1d0d; font-weight:600; }
+  .placement-hint { margin-top:7px; padding:7px 9px; background:#1a1f2e; border-radius:6px; font-size:0.72rem; color:#aaa; line-height:1.5; border-left:3px solid #f39c12; }
+  .nfz-config { display:flex; align-items:center; gap:5px; margin-top:7px; flex-wrap:wrap; }
+  .nfz-config label { font-size:0.7rem; color:#888; white-space:nowrap; }
+  .nfz-config input,.nfz-config select { padding:3px 6px; font-size:0.7rem; width:auto; }
+  .placement-list { display:flex; flex-direction:column; gap:3px; max-height:130px; overflow-y:auto; }
+  .placement-item { display:flex; align-items:center; justify-content:space-between; background:#1a1f2e; border-radius:5px; padding:4px 7px; font-size:0.7rem; }
+  .remove-btn { background:none; border:none; color:#e74c3c; cursor:pointer; font-size:0.95rem; padding:0 2px; }
+  /* Drone tabs */
+  .drone-tabs { display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap; }
+  .drone-tab { padding:5px 10px; border-radius:5px; border:1px solid #3a4080; background:#1a1f2e; color:#bbb; font-size:0.75rem; cursor:pointer; transition:all 0.2s; }
+  .drone-tab.active { font-weight:600; }
+  .waypoint-list { display:flex; flex-direction:column; gap:3px; max-height:140px; overflow-y:auto; margin-top:5px; }
+  .waypoint-item { display:flex; align-items:center; justify-content:space-between; background:#1a1f2e; border-radius:4px; padding:3px 7px; font-size:0.7rem; border-left:3px solid #9b59b6; }
+  .waypoint-item.depot-wp { border-left-color:#3498db; }
+  .waypoint-item.snapped { border-left-color:#2ecc71; }
+  .wp-label { color:#2ecc71; font-size:0.65rem; margin-left:3px; }
+  .btn-row { display:flex; gap:5px; margin-top:6px; }
+  .btn-row button { flex:1; font-size:0.72rem; padding:4px 6px; }
+  /* Reward */
+  .reward-box { background:#1a1f2e; border-radius:8px; padding:9px; text-align:center; }
+  .reward-value { font-size:2rem; font-weight:700; color:#2ecc71; line-height:1; }
+  .reward-value.bad { color:#e74c3c; }
+  .reward-value.mid { color:#f39c12; }
+  .reward-label { font-size:0.7rem; color:#888; margin-top:3px; }
+  .score-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:7px; }
+  .score-item { background:#1a1f2e; border-radius:5px; padding:6px 8px; font-size:0.72rem; }
+  .score-item .label { color:#888; margin-bottom:2px; }
+  .score-item .value { font-weight:600; }
+  .score-item .value.good { color:#2ecc71; }
+  .score-item .value.bad { color:#e74c3c; }
+  .feedback-box { background:#1a1f2e; border-radius:5px; padding:7px 9px; font-size:0.73rem; line-height:1.7; white-space:pre-wrap; max-height:120px; overflow-y:auto; color:#ccc; }
+  .legend { display:flex; flex-direction:column; gap:4px; }
+  .legend-item { display:flex; align-items:center; gap:7px; font-size:0.73rem; }
+  .legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .legend-line { width:16px; height:3px; flex-shrink:0; border-radius:2px; }
+  .status-bar { padding:5px 12px; font-size:0.72rem; color:#888; background:#0f1117; border-top:1px solid #2a2f45; }
+  .badge { display:inline-block; padding:1px 6px; border-radius:10px; font-size:0.65rem; font-weight:600; text-transform:uppercase; }
+  .badge.easy { background:#1a4a2e; color:#2ecc71; }
+  .badge.medium { background:#4a3a1a; color:#f39c12; }
+  .badge.hard { background:#4a1a1a; color:#e74c3c; }
+  .badge.custom { background:#1a2a4a; color:#7eb8f7; }
+  .task-info { font-size:0.77rem; color:#bbb; line-height:1.6; }
+  .task-info strong { color:#7eb8f7; }
+  /* Modal */
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:9999; align-items:center; justify-content:center; }
+  .modal-overlay.show { display:flex; }
+  .modal { background:#1a1f2e; border:1px solid #3a4080; border-radius:10px; padding:18px; width:270px; }
+  .modal h3 { color:#7eb8f7; font-size:0.88rem; margin-bottom:12px; }
+  .modal-field { margin-bottom:9px; }
+  .modal-field label { display:block; font-size:0.72rem; color:#888; margin-bottom:3px; }
+  .modal-field input,.modal-field select { width:100%; background:#0f1117; border:1px solid #3a4080; border-radius:5px; color:#e0e0e0; padding:5px 7px; font-size:0.8rem; }
+  .modal-btns { display:flex; gap:7px; margin-top:12px; }
+  .modal-btns button { flex:1; padding:6px; border-radius:6px; border:none; cursor:pointer; font-size:0.8rem; font-weight:600; }
+  .modal-btn-ok { background:#27ae60; color:white; }
+  .modal-btn-cancel { background:#3a4080; color:#ccc; }
+</style>
+</head>
+<body>
+
+<!-- Delivery config modal -->
+<div class="modal-overlay" id="delivery-modal">
+  <div class="modal">
+    <h3>📦 Configure Delivery</h3>
+    <div class="modal-field"><label>Label</label><input type="text" id="d-label" placeholder="e.g. Hospital, Office..."/></div>
+    <div class="modal-field"><label>Package Weight (kg)</label><input type="number" id="d-weight" value="1.0" min="0.1" max="30" step="0.1"/></div>
+    <div class="modal-field"><label>Priority</label>
+      <select id="d-priority">
+        <option value="normal">🟡 Normal</option>
+        <option value="urgent">🔴 Urgent</option>
+        <option value="low">🟢 Low</option>
+      </select>
+    </div>
+    <div class="modal-field" id="d-tw-row" style="display:none"><label>Time Window (minutes)</label><input type="number" id="d-timewindow" value="15" min="1" max="120" step="1"/></div>
+    <div class="modal-btns">
+      <button class="modal-btn-cancel" onclick="cancelDelivery()">Cancel</button>
+      <button class="modal-btn-ok" onclick="confirmDelivery()">✅ Add</button>
+    </div>
+  </div>
+</div>
+
+<header>
+  <h1>🚁 Drone Delivery Env</h1>
+  <div class="controls">
+    <select id="city-select"><option>New York</option><option>Pune</option><option>Mumbai</option></select>
+    <select id="diff-select"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select>
+    <label style="font-size:0.78rem;color:#aaa">Drones:</label>
+    <input type="number" id="num-drones" value="1" min="1" max="5" step="1" style="width:50px"/>
+    <button class="primary" onclick="loadPreset()">🔄 Preset</button>
+    <button style="background:#6a2dc7;border-color:#9b59b6;color:white;font-weight:600" onclick="startCustomTask()">✅ Custom</button>
+    <button class="submit-btn" onclick="submitPath()">🚀 Submit</button>
+    <button onclick="planGreedy()" style="background:#1e2a35">🧠 Auto</button>
+    <button class="warn" onclick="clearPathOnly()">🧹 Path</button>
+    <button class="danger" onclick="clearAll()">🗑 All</button>
+  </div>
+</header>
+
+<div class="main">
+  <div id="map"></div>
+  <div class="sidebar">
+
+    <!-- Click mode -->
+    <div class="sidebar-section">
+      <h3>Click Mode</h3>
+      <div class="mode-buttons">
+        <div class="mode-btn depot active" id="mode-depot" onclick="setMode('depot')">🏭<br>Depot</div>
+        <div class="mode-btn delivery" id="mode-delivery" onclick="setMode('delivery')">📦<br>Delivery</div>
+        <div class="mode-btn nfz" id="mode-nfz" onclick="setMode('nfz')">🚫<br>No-Fly</div>
+        <div class="mode-btn path" id="mode-path" onclick="setMode('path')">✈️<br>Path</div>
+      </div>
+      <div id="nfz-radius-row" class="nfz-config" style="display:none">
+        <label>NFZ Radius (km):</label><input type="number" id="nfz-radius" value="0.5" min="0.1" max="5" step="0.1"/>
+      </div>
+      <div class="placement-hint" id="placement-hint">Click map to place the <strong>depot</strong> first.</div>
+    </div>
+
+    <!-- Placed items -->
+    <div class="sidebar-section">
+      <h3>Placed Items</h3>
+      <div class="placement-list" id="placement-list"><div style="color:#555;font-size:0.72rem;padding:3px">Nothing placed yet.</div></div>
+      <div class="nfz-config" style="margin-top:9px">
+        <label>Battery(km):</label><input type="number" id="battery-input" value="20" min="1" max="200" step="1" style="width:55px" onchange="updateRangeCircle()" oninput="updateRangeCircle()"/>
+        <div class="range-warning" id="range-warning" style="display:none">⚠️ Delivery outside range!</div>
+      </div>
+      <div class="nfz-config" style="margin-top:6px">
+        <label>🏋️ Drone capacity (kg):</label>
+        <input type="number" id="capacity-input" value="5" min="0.5" max="100" step="0.5" style="width:55px" title="Max weight each drone can carry per trip" onchange="checkHeavyDeliveries(this.value)" oninput="checkHeavyDeliveries(this.value)"/>
+      </div>
+      <div id="heavy-warning" style="display:none;margin-top:5px;padding:5px 8px;background:#2a1a0a;border-radius:5px;border-left:3px solid #f39c12;font-size:0.7rem;color:#f0a040;line-height:1.5"></div>
+    </div>
+
+    <!-- Active task -->
+    <div class="sidebar-section">
+      <h3>Active Task</h3>
+      <div class="task-info" id="task-info">Load a preset or place items then click "Custom".</div>
+    </div>
+
+    <!-- Drone path panel -->
+    <div class="sidebar-section" id="path-panel" style="display:none">
+      <h3>Drone Paths</h3>
+      <div class="drone-tabs" id="drone-tabs"></div>
+      <div style="font-size:0.68rem;color:#666;margin-bottom:4px">Active drone's path — click ✕ to remove waypoint</div>
+      <div class="waypoint-list" id="waypoint-list"></div>
+      <div class="btn-row">
+        <button class="warn" onclick="clearPathOnly()">🧹 Clear</button>
+        <button onclick="undoLast()" style="background:#2a2010;border-color:#a07020;color:#f0c040">↩ Undo</button>
+      </div>
+    </div>
+
+    <!-- Reward -->
+    <div class="sidebar-section" id="reward-section" style="display:none">
+      <h3>Reward Breakdown</h3>
+      <div class="reward-box">
+        <div class="reward-value" id="reward-value">—</div>
+        <div class="reward-label">Total Reward (0.0 → 1.0)</div>
+      </div>
+      <div class="score-grid">
+        <div class="score-item"><div class="label">📦 Deliveries</div><div class="value" id="sc-deliveries">—</div></div>
+        <div class="score-item"><div class="label">🚨 Urgent</div><div class="value" id="sc-urgent">—</div></div>
+        <div class="score-item"><div class="label">⏱ Time Windows</div><div class="value" id="sc-time">—</div></div>
+        <div class="score-item"><div class="label">🚫 NFZ</div><div class="value" id="sc-nfz">—</div></div>
+        <div class="score-item"><div class="label">🔋 Battery</div><div class="value" id="sc-battery">—</div></div>
+        <div class="score-item"><div class="label">🔋 Recharges</div><div class="value" id="sc-recharge">—</div></div>
+      </div>
+    </div>
+
+    <!-- Feedback -->
+    <div class="sidebar-section" id="feedback-section" style="display:none">
+      <h3>Feedback</h3>
+      <div class="feedback-box" id="feedback-box"></div>
+    </div>
+
+    <!-- Legend -->
+    <div class="sidebar-section">
+      <h3>Legend</h3>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#3498db"></div> Depot</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#2ecc71"></div> Delivery location</div>
+        <div class="legend-item"><div class="legend-line" style="background:#f39c12;border-top:2px solid #f39c12"></div> ─── Outbound</div>
+        <div class="legend-item"><div class="legend-line" style="background:transparent;border-top:2px dashed #aaa"></div> ╌╌╌ Return</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#e74c3c;opacity:0.6"></div> No-fly zone</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f39c12"></div> ⚡ Recharge stop</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3498db"></div> 🏠 Return home</div>
+        <div class="legend-item" id="drone-legend"></div>
+      </div>
+    </div>
+
+    <div class="status-bar" id="status-bar">Ready.</div>
+  </div>
+</div>
+
+<script>
+const API = '';
+
+// Drone colors — one per drone
+const DRONE_COLORS = ['#f39c12','#3498db','#e74c3c','#9b59b6','#1abc9c'];
+const DRONE_EMOJIS = ['🟠','🔵','🔴','🟣','🟢'];
+
+let map, currentObs = null, clickMode = 'depot';
+let placedDepot = null, placedDeliveries = [], placedNFZs = [];
+let depotMarker = null, deliveryMarkers = [], nfzCircles = [];
+
+// Multi-drone paths: array of arrays of waypoints
+let dronePaths = [[]]; // dronePaths[droneIndex] = [{lat,lon,label}]
+let activeDroneIdx = 0;
+let pathLines = []; // one polyline per drone
+let waypointMarkersAll = []; // one array per drone
+
+// Snap
+let snapTargets = [];
+const SNAP_PX = 40;
+
+// ── Range circle ───────────────────────────────────────────────────────────
+let rangeCircle = null;
+
+function updateRangeCircle(){
+  if(rangeCircle){ map.removeLayer(rangeCircle); rangeCircle=null; }
+  // Only draw if depot is placed
+  const depot = placedDepot || (currentObs ? {lat:currentObs.depot_lat, lon:currentObs.depot_lon} : null);
+  if(!depot) return;
+  const battery = parseFloat(document.getElementById('battery-input').value) || 20;
+  const rangeKm = battery / 2; // half battery = max one-way distance
+  rangeCircle = L.circle([depot.lat, depot.lon], {
+    radius: rangeKm * 1000,
+    color: '#2ecc71',
+    fillColor: '#2ecc71',
+    fillOpacity: 0.04,
+    weight: 2,
+    dashArray: '8,6',
+    opacity: 0.7,
+    interactive: false,
+  }).addTo(map);
+}
+
+function isInsideRange(lat, lon){
+  const depot = placedDepot || (currentObs ? {lat:currentObs.depot_lat, lon:currentObs.depot_lon} : null);
+  if(!depot) return true; // no depot yet, allow anything
+  const battery = parseFloat(document.getElementById('battery-input').value) || 20;
+  const rangeKm = battery / 2;
+  return haversine(depot.lat, depot.lon, lat, lon) <= rangeKm;
+}
+
+// ── Map init ──────────────────────────────────────────────────────────────────
+map = L.map('map').setView([40.7128,-74.006],12);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',maxZoom:19}).addTo(map);
+
+map.on('click', function(e){
+  const lat=e.latlng.lat, lon=e.latlng.lng;
+  if(clickMode==='depot') placeDepot(lat,lon);
+  else if(clickMode==='delivery') placeDelivery(lat,lon);
+  else if(clickMode==='nfz') placeNFZ(lat,lon);
+  else if(clickMode==='path') addPathPoint(lat,lon);
+});
+
+// ── Mode ──────────────────────────────────────────────────────────────────────
+const hints = {
+  depot:'Click map to place <strong>depot</strong>. Only one.',
+  delivery:'Click map to add <strong>delivery locations</strong>.',
+  nfz:'Click map to add a <strong>no-fly zone</strong>.',
+  path:'Click near 📦 to snap to delivery, or anywhere for free waypoint.',
+};
+function setMode(m){
+  clickMode=m;
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('mode-'+m).classList.add('active');
+  document.getElementById('placement-hint').innerHTML=hints[m];
+  document.getElementById('nfz-radius-row').style.display=m==='nfz'?'flex':'none';
+}
+
+function makeIcon(emoji,size=30){
+  return L.divIcon({html:`<div style="font-size:${size}px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.9))">${emoji}</div>`,iconSize:[size,size],iconAnchor:[size/2,size/2],className:''});
+}
+
+// ── Snap ──────────────────────────────────────────────────────────────────────
+function buildSnapTargets(obs){
+  snapTargets=[];
+  snapTargets.push({lat:obs.depot_lat,lon:obs.depot_lon,label:'Depot',type:'depot'});
+  (obs.delivery_locations||[]).forEach(d=>snapTargets.push({lat:d.lat,lon:d.lon,label:d.label||d.id,type:'delivery'}));
+}
+function trySnap(clickLat,clickLon){
+  const cp=map.latLngToContainerPoint(L.latLng(clickLat,clickLon));
+  let best=null,bestDist=SNAP_PX;
+  for(const t of snapTargets){
+    const tp=map.latLngToContainerPoint(L.latLng(t.lat,t.lon));
+    const d=Math.sqrt((cp.x-tp.x)**2+(cp.y-tp.y)**2);
+    if(d<bestDist){bestDist=d;best=t;}
+  }
+  return best;
+}
+
+// ── Drone tab management ──────────────────────────────────────────────────────
+function initDrones(n){
+  dronePaths = Array.from({length:n}, ()=>[]);
+  activeDroneIdx = 0;
+  // Safely clear all existing path layers (arrays of polylines) and overlay lines
+  removeAllPathLayers();
+  pathLines = Array(n).fill(null);
+  waypointMarkersAll.forEach(arr=>arr.forEach(m=>{ try{map.removeLayer(m);}catch(e){} }));
+  waypointMarkersAll = Array.from({length:n},()=>[]);
+  // Set depot as first waypoint for each drone
+  if(currentObs){
+    for(let i=0;i<n;i++) dronePaths[i]=[{lat:currentObs.depot_lat,lon:currentObs.depot_lon,label:'Depot'}];
+  }
+  renderDroneTabs(n);
+  renderActiveDronePath();
+  updateWaypointList();
+}
+
+function renderDroneTabs(n){
+  const tabs=document.getElementById('drone-tabs');
+  tabs.innerHTML='';
+  const legend=document.getElementById('drone-legend');
+  legend.innerHTML='';
+  for(let i=0;i<n;i++){
+    const color=DRONE_COLORS[i%DRONE_COLORS.length];
+    const emoji=DRONE_EMOJIS[i%DRONE_EMOJIS.length];
+    const tab=document.createElement('div');
+    tab.className='drone-tab'+(i===activeDroneIdx?' active':'');
+    tab.style.borderColor=color; if(i===activeDroneIdx)tab.style.color=color;
+    tab.innerHTML=emoji+' Drone '+(i+1);
+    tab.onclick=(()=>{const idx=i;return()=>switchDrone(idx);})();
+    tabs.appendChild(tab);
+    // Legend
+    const li=document.createElement('div');
+    li.className='legend-item';
+    li.innerHTML=`<div class="legend-line" style="background:${color}"></div> Drone ${i+1} path`;
+    legend.appendChild(li);
+  }
+  document.getElementById('path-panel').style.display='block';
+}
+
+function switchDrone(idx){
+  activeDroneIdx=idx;
+  document.querySelectorAll('.drone-tab').forEach((t,i)=>{
+    t.classList.toggle('active',i===idx);
+    const color=DRONE_COLORS[i%DRONE_COLORS.length];
+    t.style.color=i===idx?color:'#bbb';
+  });
+  updateWaypointList();
+  setStatus('Editing path for Drone '+(idx+1));
+}
+
+// ── Add path point ────────────────────────────────────────────────────────────
+function addPathPoint(lat,lon){
+  if(!currentObs){setStatus('⚠️ Start or load a task first!');return;}
+  const snap=trySnap(lat,lon);
+  const finalLat=snap?snap.lat:lat;
+  const finalLon=snap?snap.lon:lon;
+  const label=snap?snap.label:null;
+  dronePaths[activeDroneIdx].push({lat:finalLat,lon:finalLon,label});
+  renderActiveDronePath();
+  updateWaypointList();
+  if(snap) setStatus('✅ Drone '+(activeDroneIdx+1)+' snapped to: '+snap.label);
+  else setStatus('Drone '+(activeDroneIdx+1)+' waypoint added. Total: '+dronePaths[activeDroneIdx].length);
+}
+
+function removeWaypoint(idx){
+  if(idx===0){setStatus('Cannot remove start (depot).');return;}
+  dronePaths[activeDroneIdx].splice(idx,1);
+  renderActiveDronePath();
+  updateWaypointList();
+}
+
+function undoLast(){
+  const p=dronePaths[activeDroneIdx];
+  if(p.length<=1){setStatus('Nothing to undo.');return;}
+  p.pop(); renderActiveDronePath(); updateWaypointList();
+}
+
+// ── Layer tracking — includes submit-overlay inner lines ─────────────────────
+let overlayLines = []; // extra lines added after submit — tracked so clearAll can remove them
+
+// Remove all Leaflet layers stored in pathLines[i] (which is an array of polylines)
+function removeDronePathLayers(i) {
+  const entry = pathLines[i];
+  if (!entry) return;
+  const arr = Array.isArray(entry) ? entry : [entry];
+  arr.forEach(l => { try { map.removeLayer(l); } catch(e){} });
+  pathLines[i] = null;
+}
+
+function removeAllPathLayers() {
+  for (let i = 0; i < pathLines.length; i++) removeDronePathLayers(i);
+  // Also remove any submit-overlay lines
+  overlayLines.forEach(l => { try { map.removeLayer(l); } catch(e){} });
+  overlayLines = [];
+}
+
+// ── Render all drone paths ────────────────────────────────────────────────────
+function renderAllPaths(){
+  for(let i=0;i<dronePaths.length;i++) renderDronePath(i);
+}
+
+function renderActiveDronePath(){
+  renderDronePath(activeDroneIdx);
+}
+
+function renderDronePath(i, submitted=false){
+  // Remove old layers safely — pathLines[i] is an array of polylines
+  removeDronePathLayers(i);
+  (waypointMarkersAll[i]||[]).forEach(m=>{ try{map.removeLayer(m);}catch(e){} }); waypointMarkersAll[i]=[];
+  const wps=dronePaths[i];
+  if(wps.length<2)return;
+  const color=DRONE_COLORS[i%DRONE_COLORS.length];
+
+  // Split path into outbound segments (solid) and return segments (dashed)
+  // Return segments are: any leg that goes TO depot (isDepot/isRecharge destination)
+  const outboundSegs=[], returnSegs=[];
+  for(let j=0;j<wps.length-1;j++){
+    const to=wps[j+1];
+    const seg=[[wps[j].lat,wps[j].lon],[to.lat,to.lon]];
+    if(to.isDepot||to.isRecharge) returnSegs.push(seg);
+    else outboundSegs.push(seg);
+  }
+
+  const lines=[];
+  if(outboundSegs.length){
+    lines.push(L.polyline(outboundSegs,{color,weight:3,opacity:0.9,dashArray:null}).addTo(map));
+  }
+  if(returnSegs.length){
+    lines.push(L.polyline(returnSegs,{color,weight:3,opacity:0.7,dashArray:'8,5'}).addTo(map));
+  }
+  pathLines[i]=lines;
+
+  // Waypoint markers — no green pre-submit, use drone color for delivery dots
+  wps.forEach((w,j)=>{
+    if(j===0)return;
+    const isRecharge=w.isRecharge||false;
+    const isHomeReturn=(w.isDepot&&!isRecharge)||false;
+    let mc,r,sym;
+    if(isRecharge){mc='#f39c12';r=7;sym='⚡';}
+    else if(isHomeReturn){mc='#3498db';r=6;sym='🏠';}
+    else{mc=color;r=5;sym=w.label?'📦':'';}  // drone color always, no green pre-submit
+    waypointMarkersAll[i].push(
+      L.circleMarker([w.lat,w.lon],{radius:r,color:mc,fillColor:mc,fillOpacity:0.85,weight:2})
+        .addTo(map)
+        .bindPopup(`<b>Drone ${i+1} WP${j}</b>${w.label?'<br>'+sym+' '+w.label:''}<br><a href="#" onclick="removeWaypoint(${j});return false;">✕ Remove</a>`)
+    );
+  });
+}
+
+// ── Waypoint list ─────────────────────────────────────────────────────────────
+function updateWaypointList(){
+  const list=document.getElementById('waypoint-list');
+  const wps=dronePaths[activeDroneIdx]||[];
+  const color=DRONE_COLORS[activeDroneIdx%DRONE_COLORS.length];
+  list.innerHTML=wps.map((w,i)=>{
+    const isHome=w.isDepot||w.isRecharge;
+    const borderCol=i===0?'#3498db':w.isRecharge?'#f39c12':w.isDepot?'#3498db':color;
+    const cls=i===0?'waypoint-item depot-wp':isHome?'waypoint-item depot-wp':'waypoint-item'+(w.label?' snapped':'');
+    const lbl=w.label?`<span class="wp-label">${w.label}</span>`:'';
+    const rm=i===0?'':`<button class="remove-btn" onclick="removeWaypoint(${i})">✕</button>`;
+    return `<div class="${cls}" style="border-left-color:${borderCol}">${i+1}. ${w.lat.toFixed(4)},${w.lon.toFixed(4)} ${lbl}${rm}</div>`;
+  }).join('')||'<div style="color:#555;font-size:0.7rem;padding:3px">No waypoints yet.</div>';
+  list.scrollTop=list.scrollHeight;
+}
+
+// ── Placement ────────────────────────────────────────────────────────────────
+let pendingLat=null,pendingLon=null;
+function placeDepot(lat,lon){
+  if(depotMarker)map.removeLayer(depotMarker);
+  placedDepot={lat,lon};
+  depotMarker=L.marker([lat,lon],{icon:makeIcon('🏭',34)}).addTo(map).bindPopup('<b>🏭 Depot</b>');
+  updateList();
+  updateRangeCircle();
+  setStatus('Depot placed! Green circle = drone range (battery ÷ 2). Place deliveries inside it.');
+  setMode('delivery');
+}
+function placeDelivery(lat,lon){
+  pendingLat=lat; pendingLon=lon;
+  const n=placedDeliveries.length+1;
+  document.getElementById('d-label').value='Delivery '+n;
+  document.getElementById('d-weight').value='1.0';
+  document.getElementById('d-priority').value='normal';
+  document.getElementById('d-timewindow').value='15';
+  document.getElementById('d-tw-row').style.display='none';
+  document.getElementById('d-priority').onchange=function(){
+    document.getElementById('d-tw-row').style.display=this.value==='urgent'?'block':'none';
+  };
+  document.getElementById('delivery-modal').classList.add('show');
+}
+function confirmDelivery(){
+  // Range check first
+  if(!isInsideRange(pendingLat, pendingLon)){
+    const battery=parseFloat(document.getElementById('battery-input').value)||20;
+    const rangeKm=(battery/2).toFixed(1);
+    document.getElementById('delivery-modal').classList.remove('show');
+    const warn=document.getElementById('range-warning');
+    warn.style.display='block';
+    warn.textContent='⚠️ Outside drone range ('+rangeKm+'km). Increase battery or place closer to depot.';
+    setStatus('❌ Rejected — outside '+rangeKm+'km range. Increase battery or place closer.');
+    return;
+  }
+  document.getElementById('range-warning').style.display='none';
+  const label=document.getElementById('d-label').value||'Delivery '+(placedDeliveries.length+1);
+  const weight=parseFloat(document.getElementById('d-weight').value)||1.0;
+  const priority=document.getElementById('d-priority').value;
+  const tw=priority==='urgent'?(parseInt(document.getElementById('d-timewindow').value)||15):null;
+  placedDeliveries.push({lat:pendingLat,lon:pendingLon,label,weight_kg:weight,priority,time_window_minutes:tw});
+  const pe=priority==='urgent'?'🔴':priority==='low'?'🟢':'🟡';
+  const popup='<b>'+label+'</b><br>'+pe+' '+priority+'<br>⚖️ '+weight+'kg'+(tw?'<br>⏱ '+tw+'min':'');
+  deliveryMarkers.push(L.marker([pendingLat,pendingLon],{icon:makeIcon('📦',28)}).addTo(map).bindPopup(popup));
+  document.getElementById('delivery-modal').classList.remove('show');
+  updateList(); setStatus('Added '+label+' ('+weight+'kg, '+priority+')');
+}
+function cancelDelivery(){document.getElementById('delivery-modal').classList.remove('show');}
+function placeNFZ(lat,lon){
+  const r=parseFloat(document.getElementById('nfz-radius').value)||0.5;
+  const label='No-Fly Zone '+(placedNFZs.length+1);
+  placedNFZs.push({lat,lon,radius_km:r,label});
+  nfzCircles.push(L.circle([lat,lon],{radius:r*1000,color:'#e74c3c',fillColor:'#e74c3c',fillOpacity:0.25,weight:2,dashArray:'6,4'}).addTo(map).bindPopup('<b>🚫 '+label+'</b>'));
+  updateList();
+}
+function removeItem(type,index){
+  if(type==='depot'){
+    if(depotMarker){map.removeLayer(depotMarker);depotMarker=null;}
+    placedDepot=null;
+    if(rangeCircle){map.removeLayer(rangeCircle);rangeCircle=null;}
+    // Paths are invalid without a depot — clear them all, keep delivery markers
+    currentObs=null;
+    snapTargets=[];
+    clearPathOnly();
+    document.getElementById('path-panel').style.display='none';
+    document.getElementById('drone-legend').innerHTML='';
+    document.getElementById('task-info').innerHTML='Load a preset or place items then click "Custom".';
+  }
+  else if(type==='delivery'){
+    const removed=placedDeliveries[index];
+    map.removeLayer(deliveryMarkers[index]);
+    deliveryMarkers.splice(index,1);
+    placedDeliveries.splice(index,1);
+    // Keep snapTargets in sync — rebuild from current sources of truth
+    if(currentObs){
+      currentObs.delivery_locations=currentObs.delivery_locations.filter(
+        d=>!(Math.abs(d.lat-removed.lat)<0.00001&&Math.abs(d.lon-removed.lon)<0.00001)
+      );
+      buildSnapTargets(currentObs);
+    } else {
+      // custom mode: snapTargets built from placedDeliveries + placedDepot
+      snapTargets=[];
+      if(placedDepot) snapTargets.push({lat:placedDepot.lat,lon:placedDepot.lon,label:'Depot',type:'depot'});
+      placedDeliveries.forEach(d=>snapTargets.push({lat:d.lat,lon:d.lon,label:d.label,type:'delivery'}));
+    }
+    // Strip waypoints that were snapped to this delivery from every drone path and re-render
+    const THRESH=0.00015; // ~15m
+    for(let i=0;i<dronePaths.length;i++){
+      dronePaths[i]=dronePaths[i].filter((w,wi)=>{
+        if(wi===0)return true; // always keep depot start
+        return !(Math.abs(w.lat-removed.lat)<THRESH&&Math.abs(w.lon-removed.lon)<THRESH);
+      });
+      renderDronePath(i);
+    }
+    updateWaypointList();
+  }
+  else if(type==='nfz'){map.removeLayer(nfzCircles[index]);nfzCircles.splice(index,1);placedNFZs.splice(index,1);}
+  updateList();
+}
+function updateList(){
+  const list=document.getElementById('placement-list');
+  const items=[];
+  if(placedDepot)items.push(`<div class="placement-item"><span>🏭 Depot</span><button class="remove-btn" onclick="removeItem('depot',0)">✕</button></div>`);
+  placedDeliveries.forEach((d,i)=>{
+    const pe=d.priority==='urgent'?'🔴':d.priority==='low'?'🟢':'🟡';
+    const tw=d.time_window_minutes?` ⏱${d.time_window_minutes}m`:'';
+    items.push(`<div class="placement-item"><span>📦 ${d.label} ${pe} ${d.weight_kg}kg${tw}</span><button class="remove-btn" onclick="removeItem('delivery',${i})">✕</button></div>`);
+  });
+  placedNFZs.forEach((n,i)=>items.push(`<div class="placement-item"><span>🚫 NFZ${i+1} r=${n.radius_km}km</span><button class="remove-btn" onclick="removeItem('nfz',${i})">✕</button></div>`));
+  list.innerHTML=items.length?items.join(''):'<div style="color:#555;font-size:0.72rem;padding:3px">Nothing placed yet.</div>';
+}
+
+// ── Custom task ───────────────────────────────────────────────────────────────
+async function startCustomTask(){
+  if(!placedDepot){alert('Place a depot first!');return;}
+  if(placedDeliveries.length===0){alert('Add at least 1 delivery!');return;}
+  const n=parseInt(document.getElementById('num-drones').value)||1;
+  const capacity=parseFloat(document.getElementById('capacity-input').value)||5;
+  checkHeavyDeliveries(capacity);
+  const body={
+    city:'Custom',num_drones:n,depot:placedDepot,
+    deliveries:placedDeliveries,no_fly_zones:placedNFZs,
+    battery_limit_km:parseFloat(document.getElementById('battery-input').value)||20,
+    drone_weight_capacity_kg:capacity,
+  };
+  try{
+    const res=await fetch(API+'/reset/custom',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const data=await res.json(); currentObs=data.observation;
+    buildSnapTargets(currentObs);
+    updateTaskInfo(currentObs);
+    initDrones(n);
+    document.getElementById('reward-section').style.display='none';
+    document.getElementById('feedback-section').style.display='none';
+    setMode('path');
+    setStatus('✅ Custom task! '+n+' drone(s), '+placedDeliveries.length+' deliveries. Click Drone tabs to switch.');
+  }catch(e){setStatus('Error: '+e.message);}
+}
+
+// ── Load preset ───────────────────────────────────────────────────────────────
+async function loadPreset(){
+  const city=document.getElementById('city-select').value;
+  const diff=document.getElementById('diff-select').value;
+  const numDronesOverride=parseInt(document.getElementById('num-drones').value)||null;
+  clearAll(true);
+  try{
+    const body={city,difficulty:diff};
+    if(numDronesOverride)body.num_drones=numDronesOverride;
+    const res=await fetch(API+'/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const data=await res.json(); currentObs=data.observation;
+    buildSnapTargets(currentObs);
+    renderPresetTask(currentObs);
+    const n=currentObs.num_drones;
+    document.getElementById('num-drones').value=n;
+    initDrones(n);
+    setMode('path');
+    setStatus('Preset: '+city+' '+diff.toUpperCase()+' — '+n+' drone(s). Use tabs to switch drones!');
+  }catch(e){setStatus('Error: '+e.message);}
+}
+
+function renderPresetTask(obs){
+  if(depotMarker)map.removeLayer(depotMarker);
+  depotMarker=L.marker([obs.depot_lat,obs.depot_lon],{icon:makeIcon('🏭',34)}).addTo(map).bindPopup('<b>🏭 Depot</b>');
+  // Sync inputs to preset values
+  document.getElementById('battery-input').value=obs.battery_limit_km;
+  if(obs.drone_weight_capacity_kg) document.getElementById('capacity-input').value=obs.drone_weight_capacity_kg;
+  if(rangeCircle){map.removeLayer(rangeCircle);rangeCircle=null;}
+  rangeCircle=L.circle([obs.depot_lat,obs.depot_lon],{
+    radius:(obs.battery_limit_km/2)*1000,color:'#2ecc71',fillColor:'#2ecc71',
+    fillOpacity:0.04,weight:2,dashArray:'8,6',opacity:0.7,interactive:false
+  }).addTo(map);
+  deliveryMarkers.forEach(m=>map.removeLayer(m)); deliveryMarkers=[];
+  obs.delivery_locations.forEach(d=>{
+    const pe=d.priority==='urgent'?'🔴':d.priority==='low'?'🟢':'🟡';
+    const popup='<b>'+d.label+'</b><br>'+pe+' '+d.priority+'<br>⚖️ '+d.weight_kg+'kg'+(d.time_window_minutes?'<br>⏱ '+d.time_window_minutes+'min':'');
+    deliveryMarkers.push(L.marker([d.lat,d.lon],{icon:makeIcon('📦',28)}).addTo(map).bindPopup(popup));
+  });
+  nfzCircles.forEach(c=>map.removeLayer(c)); nfzCircles=[];
+  obs.no_fly_zones.forEach(nfz=>nfzCircles.push(
+    L.circle([nfz.center_lat,nfz.center_lon],{radius:nfz.radius_km*1000,color:'#e74c3c',fillColor:'#e74c3c',fillOpacity:0.25,weight:2,dashArray:'6,4'})
+      .addTo(map).bindPopup('<b>🚫 '+nfz.label+'</b>')
+  ));
+  const pts=[[obs.depot_lat,obs.depot_lon],...obs.delivery_locations.map(d=>[d.lat,d.lon])];
+  map.fitBounds(pts,{padding:[40,40]});
+  updateTaskInfo(obs);
+}
+
+function updateTaskInfo(obs){
+  const urgentCount=obs.delivery_locations.filter(d=>d.priority==='urgent').length;
+  document.getElementById('task-info').innerHTML=`
+    <strong>City:</strong> ${obs.city} <span class="badge ${obs.difficulty}">${obs.difficulty}</span><br>
+    <strong>Drones:</strong> ${obs.num_drones} 🚁<br>
+    <strong>Deliveries:</strong> ${obs.delivery_locations.length} (${urgentCount} urgent)<br>
+    <strong>Battery/drone:</strong> ${obs.battery_limit_km} km<br>
+    <strong>Capacity/drone:</strong> ${obs.drone_weight_capacity_kg||'?'} kg<br>
+    <strong>NFZs:</strong> ${obs.no_fly_zones.length}<br>
+    <br><em style="color:#888;font-size:0.72rem">${obs.description}</em>`;
+}
+
+// ── Submit all drone paths ────────────────────────────────────────────────────
+async function submitPath(){
+  if(!currentObs){alert('Load or start a task first!');return;}
+  const n=currentObs.num_drones;
+  // Auto-fill idle drones with depot-only stub (depot → depot) so the server is happy
+  // and they simply sit at base without affecting the reward.
+  for(let i=0;i<n;i++){
+    if(!dronePaths[i]||dronePaths[i].length<2){
+      // Drone is idle — give it a depot→depot no-op path
+      const depot={lat:currentObs.depot_lat,lon:currentObs.depot_lon};
+      dronePaths[i]=[
+        {lat:depot.lat,lon:depot.lon,label:'Depot'},
+        {lat:depot.lat,lon:depot.lon,label:'Idle at depot',isDepot:true}
+      ];
+    }
+  }
+  const drone_paths=dronePaths.map((wps,i)=>({
+    drone_id:i+1,
+    waypoints:wps.map(w=>({lat:w.lat,lon:w.lon}))
+  }));
+  setStatus('Submitting '+n+' drone path(s)...');
+  try{
+    const res=await fetch(API+'/step',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({drone_paths})});
+    const data=await res.json(); const obs=data.observation;
+    document.getElementById('reward-section').style.display='block';
+    document.getElementById('feedback-section').style.display='block';
+    const rv=document.getElementById('reward-value');
+    rv.textContent=data.reward.toFixed(4);
+    rv.className='reward-value'+(data.reward>=0.8?'':data.reward>=0.5?' mid':' bad');
+    const d=obs.deliveries_completed,dt=obs.total_deliveries;
+    setScoreItem('sc-deliveries',d+'/'+dt,d===dt);
+    const ud=obs.urgent_delivered||0,ut=obs.urgent_total||0;
+    setScoreItem('sc-urgent',ut>0?ud+'/'+ut:'N/A',ut===0||ud===ut);
+    const tv=obs.time_violations||0;
+    setScoreItem('sc-time',tv===0?'✅ None':'❌ '+tv,tv===0);
+    const nv=obs.no_fly_violations||0;
+    setScoreItem('sc-nfz',nv===0?'✅ None':'❌ '+nv,nv===0);
+    const bad=obs.battery_exceeded_drones||[];
+    setScoreItem('sc-battery',bad.length===0?'✅ OK':'❌ D'+bad.join(','),bad.length===0);
+    const rc=obs.recharge_trips||0;
+    setScoreItem('sc-recharge',rc===0?'✅ None':'⚡ '+rc,rc===0);
+    document.getElementById('feedback-box').textContent=obs.feedback||'';
+    // After submit: color-coded outer border + drone-colored inner line overlay.
+    // Store ALL added lines in overlayLines so clearPathOnly/clearAll can remove them.
+    const reward=data.reward;
+    const borderCol=reward>=0.8?'#2ecc71':reward>=0.5?'#f39c12':'#e74c3c';
+    pathLines.forEach((lines,idx)=>{
+      if(!lines)return;
+      const arr=Array.isArray(lines)?lines:[lines];
+      arr.forEach(l=>{
+        const isDashed=(l.options.dashArray!=null);
+        l.setStyle({weight:5,color:borderCol,opacity:0.95,dashArray:isDashed?'8,5':null});
+        const droneColor=DRONE_COLORS[idx%DRONE_COLORS.length];
+        const inner=L.polyline(l.getLatLngs(),{color:droneColor,weight:2,opacity:0.8,
+          dashArray:isDashed?'8,5':null,interactive:false}).addTo(map);
+        overlayLines.push(inner); // tracked — can be removed by clear functions
+      });
+    });
+    setStatus('Submitted! Reward: '+data.reward+' — '+d+'/'+dt+' deliveries');
+  }catch(e){setStatus('Error: '+e.message);}
+}
+
+function setScoreItem(id,text,good){
+  const el=document.getElementById(id);
+  el.textContent=text; el.className='value'+(good?' good':' bad');
+}
+
+// ── Heavy delivery warning ────────────────────────────────────────────────────
+function checkHeavyDeliveries(capacity){
+  const hw = document.getElementById('heavy-warning');
+  capacity = parseFloat(capacity);
+  if(!capacity || isNaN(capacity)) { hw.style.display='none'; return; }
+  const n = parseInt(document.getElementById('num-drones').value)||1;
+  const heavy = placedDeliveries.filter(d=>d.weight_kg > capacity);
+  if(heavy.length===0){ hw.style.display='none'; return; }
+  const warnLines=[], errLines=[];
+  heavy.forEach(d=>{
+    const needed = Math.ceil(d.weight_kg/capacity);
+    if(needed > n) errLines.push(`❌ ${d.label}: ${d.weight_kg}kg needs ${needed} drones — only ${n} available, will be skipped`);
+    else warnLines.push(`🏋️ ${d.label}: ${d.weight_kg}kg → ${needed} drones go together`);
+  });
+  const all=[...errLines,...warnLines];
+  hw.innerHTML = all.join('<br>');
+  hw.style.display='block';
+}
+
+// ── Greedy auto-plan with battery + weight-capacity tracking ──────────────────
+function planGreedy(){
+  if(!currentObs){alert('Load a task first!');return;}
+  const obs=currentObs;
+  const n=obs.num_drones;
+  const capacity=parseFloat(document.getElementById('capacity-input').value)||obs.drone_weight_capacity_kg||5;
+  const battery=obs.battery_limit_km;
+  const depot={lat:obs.depot_lat,lon:obs.depot_lon};
+  const RETURN_BUFFER=1.05;
+
+  // Categorise deliveries
+  const normalDeliveries=[], heavyDeliveries=[], skippedLabels=[];
+  obs.delivery_locations.forEach(d=>{
+    const dronesNeeded=Math.ceil(d.weight_kg/capacity);
+    if(dronesNeeded>n) skippedLabels.push(`${d.label} (${d.weight_kg}kg needs ${dronesNeeded} drones, only ${n} available)`);
+    else if(dronesNeeded>1) heavyDeliveries.push({...d,dronesNeeded});
+    else normalDeliveries.push({...d,dronesNeeded:1});
+  });
+
+  const hw=document.getElementById('heavy-warning');
+  const warnLines=[];
+  if(skippedLabels.length) warnLines.push('❌ <strong>Cannot deliver:</strong><br>'+skippedLabels.join('<br>'));
+  if(heavyDeliveries.length) warnLines.push('🏋️ <strong>Heavy (multi-drone):</strong><br>'+heavyDeliveries.map(d=>`${d.label}: ${d.weight_kg}kg → ${d.dronesNeeded} drones`).join('<br>'));
+  if(warnLines.length){hw.innerHTML=warnLines.join('<br>');hw.style.display='block';}
+  else hw.style.display='none';
+
+  // Per-drone mutable state
+  const paths       = Array.from({length:n},()=>[{lat:depot.lat,lon:depot.lon,label:'Depot',isDepot:true}]);
+  const batteryLeft = Array(n).fill(battery);
+  const weightLeft  = Array(n).fill(capacity); // kg remaining this trip
+  const curPos      = Array.from({length:n},()=>({...depot}));
+
+  // Send drone di back to depot: deduct flight cost, reset battery+weight, add waypoint
+  // Only adds a waypoint if the drone is NOT already at the depot.
+  function returnToDepot(di, label){
+    const dist=haversine(curPos[di].lat,curPos[di].lon,depot.lat,depot.lon);
+    if(dist<0.001) return; // already at depot — just reset state, no waypoint
+    batteryLeft[di]=Math.max(0,batteryLeft[di]-dist);
+    const isRecharge = batteryLeft[di]<battery*0.25;
+    paths[di].push({lat:depot.lat,lon:depot.lon,
+      label: isRecharge?'Recharge ⚡':label,
+      isDepot:true, isRecharge});
+    batteryLeft[di]=battery;
+    weightLeft[di]=capacity;
+    curPos[di]={...depot};
+  }
+
+  // ── Heavy deliveries first ────────────────────────────────────────────────
+  const heavySorted=[...heavyDeliveries].sort((a,b)=>(a.priority==='urgent'?-1:b.priority==='urgent'?1:0));
+  heavySorted.forEach(d=>{
+    const k=d.dronesNeeded;
+    const loadPerDrone=d.weight_kg/k; // weight each drone carries for this delivery
+    // Pick k drones with most battery
+    const droneIdxs=[...Array(n).keys()].sort((a,b)=>batteryLeft[b]-batteryLeft[a]).slice(0,k);
+    droneIdxs.forEach(di=>{
+      const toD=haversine(curPos[di].lat,curPos[di].lon,d.lat,d.lon);
+      const toHome=haversine(d.lat,d.lon,depot.lat,depot.lon);
+      const needsBattery=(toD+toHome)*RETURN_BUFFER>batteryLeft[di];
+      const needsPickup=weightLeft[di]<loadPerDrone; // not enough space for this drone's share
+      if(needsBattery||needsPickup) returnToDepot(di,'Pickup 📦');
+      paths[di].push({lat:d.lat,lon:d.lon,label:`${d.label} [${k} drones]`});
+      batteryLeft[di]-=haversine(curPos[di].lat,curPos[di].lon,d.lat,d.lon);
+      weightLeft[di]=Math.max(0,weightLeft[di]-loadPerDrone); // each drone carries its share
+      curPos[di]={lat:d.lat,lon:d.lon};
+    });
+  });
+
+  // ── Normal deliveries: shared pool, best (drone, delivery) each round ────
+  // Rule: drone can only take a delivery if it has BOTH battery AND weight space.
+  // If no drone qualifies, only the drones that are blocked (weight=0 or low battery)
+  // return to depot — not all drones blindly.
+  let remaining=[...normalDeliveries].sort((a,b)=>(
+    a.priority==='urgent'&&b.priority!=='urgent'?-1:
+    b.priority==='urgent'&&a.priority!=='urgent'?1:0));
+
+  let safetyLimit=remaining.length*n*5+10;
+  while(remaining.length>0 && safetyLimit-->0){
+    let bestDrone=-1, bestDel=null, bestScore=Infinity;
+
+    for(let i=0;i<n;i++){
+      for(const d of remaining){
+        const toD  =haversine(curPos[i].lat,curPos[i].lon,d.lat,d.lon);
+        const toHome=haversine(d.lat,d.lon,depot.lat,depot.lon);
+        const canCarry=weightLeft[i]>=d.weight_kg;
+        const canFly  =(toD+toHome)*RETURN_BUFFER<=batteryLeft[i];
+        if(canCarry&&canFly){
+          const score=(d.priority==='urgent'?-1e9:0)+toD;
+          if(score<bestScore){bestScore=score;bestDrone=i;bestDel=d;}
+        }
+      }
+    }
+
+    if(bestDrone===-1){
+      // No drone can currently serve any delivery.
+      // Only return the MINIMUM number of blocked drones needed to cover remaining work.
+      // e.g. if there's 1 delivery left, only 1 drone needs to go back — not all of them.
+      const minWeight=Math.min(...remaining.map(d=>d.weight_kg));
+      // Blocked drones: can't carry even the smallest remaining package
+      const blockedDrones=[];
+      for(let i=0;i<n;i++){
+        if(weightLeft[i]<minWeight || batteryLeft[i]<battery*0.15) blockedDrones.push(i);
+      }
+      // Only send back as many as needed (remaining.length deliveries need remaining.length drones max)
+      const dronesNeeded=Math.min(blockedDrones.length, remaining.length);
+      // Prefer drones closest to depot (cheapest to send back)
+      const toSendBack=blockedDrones
+        .sort((a,b)=>haversine(curPos[a].lat,curPos[a].lon,depot.lat,depot.lon)
+                    -haversine(curPos[b].lat,curPos[b].lon,depot.lat,depot.lon))
+        .slice(0,dronesNeeded);
+      let anyFixed=false;
+      for(const di of toSendBack){
+        const wasAtDepot=haversine(curPos[di].lat,curPos[di].lon,depot.lat,depot.lon)<0.001;
+        returnToDepot(di,'Pickup 📦');
+        if(!wasAtDepot) anyFixed=true;
+      }
+      if(!anyFixed) break; // all needed drones already at depot, still stuck — genuinely unreachable
+      continue;
+    }
+
+    // Commit: fly bestDrone to bestDel
+    batteryLeft[bestDrone]-=haversine(curPos[bestDrone].lat,curPos[bestDrone].lon,bestDel.lat,bestDel.lon);
+    weightLeft[bestDrone]-=bestDel.weight_kg;
+    paths[bestDrone].push({lat:bestDel.lat,lon:bestDel.lon,label:bestDel.label});
+    curPos[bestDrone]={lat:bestDel.lat,lon:bestDel.lon};
+    remaining=remaining.filter(d=>d!==bestDel);
+
+    // Pro-active return: only if this drone can't carry ANY remaining delivery
+    // AND there are more remaining deliveries than other drones can handle
+    if(remaining.length>0){
+      const minRemaining=Math.min(...remaining.map(d=>d.weight_kg));
+      const cannotCarry=weightLeft[bestDrone]<minRemaining;
+      if(cannotCarry){
+        // Count how many other drones (not this one) can currently carry at least one remaining delivery
+        const otherCapable=Array.from({length:n},(_,i)=>i)
+          .filter(i=>i!==bestDrone && remaining.some(d=>weightLeft[i]>=d.weight_kg &&
+            (haversine(curPos[i].lat,curPos[i].lon,d.lat,d.lon)+
+             haversine(d.lat,d.lon,depot.lat,depot.lon))*RETURN_BUFFER<=batteryLeft[i])).length;
+        // Only return this drone if it's needed (remaining jobs > capable drones)
+        if(remaining.length>otherCapable){
+          returnToDepot(bestDrone,'Pickup 📦');
+        }
+      }
+    }
+  }
+
+  // Final return home for all drones not already at depot
+  for(let i=0;i<n;i++){
+    const last=paths[i][paths[i].length-1];
+    if(!last.isDepot){
+      paths[i].push({lat:depot.lat,lon:depot.lon,label:'Return Home 🏠',isDepot:true});
+    }
+    dronePaths[i]=paths[i];
+    renderDronePath(i);
+  }
+  updateWaypointList();
+  setStatus(`Auto-planned ${n} drone(s). Cap: ${capacity}kg. ${heavyDeliveries.length} heavy, ${skippedLabels.length} skipped. Submit!`);
+}
+
+// ── Haversine ─────────────────────────────────────────────────────────────────
+function haversine(lat1,lon1,lat2,lon2){
+  const R=6371,dLat=(lat2-lat1)*Math.PI/180,dLon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+// ── Clear ─────────────────────────────────────────────────────────────────────
+function clearPathOnly(){
+  const n=dronePaths.length||1;
+  for(let i=0;i<n;i++){
+    removeDronePathLayers(i);
+    (waypointMarkersAll[i]||[]).forEach(m=>{ try{map.removeLayer(m);}catch(e){} });
+    waypointMarkersAll[i]=[];
+    if(currentObs) dronePaths[i]=[{lat:currentObs.depot_lat,lon:currentObs.depot_lon,label:'Depot'}];
+    else dronePaths[i]=[];
+  }
+  // Remove any submit overlay lines
+  overlayLines.forEach(l=>{ try{map.removeLayer(l);}catch(e){} }); overlayLines=[];
+  // Ensure pathLines is sized correctly
+  pathLines=Array(n).fill(null);
+  updateWaypointList();
+  document.getElementById('reward-section').style.display='none';
+  document.getElementById('feedback-section').style.display='none';
+  setStatus('Paths cleared.');
+}
+
+function clearAll(keepPreset=false){
+  // Always remove range circle and all path layers
+  if(rangeCircle){map.removeLayer(rangeCircle);rangeCircle=null;}
+  removeAllPathLayers();
+  pathLines=[];
+  waypointMarkersAll.forEach(arr=>arr.forEach(m=>{ try{map.removeLayer(m);}catch(e){} }));
+  waypointMarkersAll=[];
+  dronePaths=[[]];
+
+  if(!keepPreset){
+    if(depotMarker){map.removeLayer(depotMarker);depotMarker=null;}
+    placedDepot=null; placedDeliveries=[];
+    deliveryMarkers.forEach(m=>map.removeLayer(m)); deliveryMarkers=[];
+    nfzCircles.forEach(c=>map.removeLayer(c)); nfzCircles=[];
+    placedNFZs=[]; updateList();
+    currentObs=null; snapTargets=[];
+    document.getElementById('task-info').innerHTML='Load a preset or place items and start custom.';
+    document.getElementById('path-panel').style.display='none';
+    document.getElementById('drone-legend').innerHTML='';
+  }
+
+  document.getElementById('waypoint-list').innerHTML='';
+  document.getElementById('reward-section').style.display='none';
+  document.getElementById('feedback-section').style.display='none';
+  setStatus('Cleared.');
+}
+
+function setStatus(msg){document.getElementById('status-bar').innerHTML=msg;}
+setMode('depot');
+</script>
+</body>
+</html>
