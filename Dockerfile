@@ -1,30 +1,21 @@
 FROM python:3.11-slim
 
-# Install uv 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
-# HF Spaces requirements
 RUN useradd -m -u 1000 user
 WORKDIR /app
 
-# Install curl for the validator's healthchecks
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy package config first
-COPY --chown=user pyproject.toml uv.lock ./
+COPY --chown=user requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install dependencies into the system python
-RUN uv pip install --system --frozen .
-
-# Copy the rest of your code
 COPY --chown=user . .
 
-# Final install to register the 'server' entry point
-RUN uv pip install --system --frozen .
-
 EXPOSE 7860
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:7860/health || exit 1
+
 USER user
 
-# This command now works because of [project.scripts] in pyproject.toml
-CMD ["server"]
+CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "7860"]
