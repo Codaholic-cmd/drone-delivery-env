@@ -58,6 +58,16 @@ class CustomResetRequest(BaseModel):
 def health():
     return {"status": "ok", "supported_cities": SUPPORTED_CITIES}
 
+@app.get("/")
+def root():
+    return {
+        "name": "Drone Delivery Environment",
+        "version": "3.0.0",
+        "status": "running",
+        "endpoints": ["/health", "/reset", "/step", "/state", "/tasks", "/web"],
+        "supported_cities": SUPPORTED_CITIES
+    }
+
 
 @app.post("/reset")
 def reset(request: ResetRequest = ResetRequest()):
