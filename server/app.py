@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional, List
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 try:
     from models import DroneAction, DroneObservation, DroneState, DeliveryLocation, NoFlyZone, Waypoint
@@ -187,6 +188,10 @@ def web_ui():
     with open(html_path, "r", encoding="utf-8") as f:
         return f.read()
 
+@app.get("/")
+def root():
+    # Redirect visitors hitting the base URL straight to your Web UI
+    return RedirectResponse(url="/web")
 
 if __name__ == "__main__":
     import uvicorn
