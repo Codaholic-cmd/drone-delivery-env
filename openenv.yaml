@@ -12,7 +12,7 @@ runtime: docker
 
 app:
   module: server.app
-  port: 8000
+  port: 7860
 
 client:
   class_name: DroneDeliveryEnv
