@@ -6,13 +6,21 @@ build-backend = "setuptools.build_meta"
 name = "drone_delivery_env"
 version = "2.0.0"
 description = "Drone delivery path optimization environment for OpenEnv"
+readme = "README.md"
+requires-python = ">=3.10"
+# MANDATORY: Added openenv-core here
 dependencies = [
     "fastapi",
     "uvicorn",
     "pydantic",
     "requests",
-    "openai"
+    "openai",
+    "openenv-core>=0.2.0" 
 ]
+
+# MANDATORY: This tells the grader how to run 'server'
+[project.scripts]
+server = "server.app:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
