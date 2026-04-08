@@ -1,8 +1,7 @@
 """
 inference.py — Baseline LLM agent for drone_delivery_env.
-
 Compliant with OpenEnv Hackathon (Scaler x Meta PyTorch) evaluation format.
-Emits [START], [STEP], [END] structured JSON logs to stdout for automated scoring.
+Emits [START], [STEP], [END] structured plain-text logs to stdout for automated scoring.
 """
 
 import os
@@ -13,10 +12,11 @@ import time
 import requests
 from openai import OpenAI
 
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME   = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN     = os.environ.get("HF_TOKEN", "")
-ENV_URL      = os.environ.get("ENV_URL", "https://sscodes101-drone-delivery-env.hf.space")
+# NO DEFAULT for HF_TOKEN to comply with the Pre-Submission Checklist
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+HF_TOKEN     = os.getenv("HF_TOKEN") 
+ENV_URL      = os.getenv("ENV_URL", "https://sscodes101-drone-delivery-env.hf.space")
 
 client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
 
@@ -54,6 +54,19 @@ OUTPUT FORMAT — return ONLY valid JSON, no explanation:
 Include one entry per drone even if a drone is idle (give it a depot->depot path).
 """
 
+def log_start(task: str, model: str) -> None:
+    print(f"[START] task={task} env=drone_delivery model={model}", flush=True)
+
+def log_step(step: int, action: str, reward: float, done: bool, error: str = None) -> None:
+    err_str = error if error else "null"
+    done_str = "true" if done else "false"
+    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_str} error={err_str}", flush=True)
+
+def log_end(success: bool, steps: int, score: float, rewards: list) -> None:
+    succ_str = "true" if success else "false"
+    rew_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
+    print(f"[END] success={succ_str} steps={steps} score={score:.2f} rewards={rew_str}", flush=True)
+
 
 def build_user_prompt(obs: dict) -> str:
     n = obs["num_drones"]
@@ -78,7 +91,7 @@ def build_user_prompt(obs: dict) -> str:
 
 
 def parse_drone_paths(llm_output: str, n_drones: int, depot: dict):
-    text = re.sub(r"```(?:json)?", "", llm_output).strip().rstrip("`").strip()
+    text = re.sub(r"`{3}(?:json)?", "", llm_output).strip().rstrip("`").strip()
     parsed = None
 
     obj_match = re.search(r'\{.*\}', text, re.DOTALL)
@@ -121,145 +134,68 @@ def parse_drone_paths(llm_output: str, n_drones: int, depot: dict):
 
 
 def run_task(task_id: str, city: str, difficulty: str) -> dict:
-    # ── [START] ───────────────────────────────────────────────────────────────
-    print(json.dumps({
-        "type": "[START]",
-        "task_id": task_id,
-        "city": city,
-        "difficulty": difficulty,
-        "model": MODEL_NAME,
-        "env_url": ENV_URL,
-    }), flush=True)
-
+    log_start(task=task_id, model=MODEL_NAME)
     t0 = time.time()
 
-    # 1. Reset
+    # 1. Reset Environment
     try:
-        reset_resp = requests.post(
-            f"{ENV_URL}/reset",
-            json={"city": city, "difficulty": difficulty},
-            timeout=30,
-        )
+        reset_resp = requests.post(f"{ENV_URL}/reset", json={"city": city, "difficulty": difficulty}, timeout=30)
         reset_resp.raise_for_status()
         obs = reset_resp.json()["observation"]
     except Exception as e:
-        result = {
-            "type": "[END]",
-            "task_id": task_id,
-            "reward": 0.01,
-            "deliveries_completed": 0,
-            "total_deliveries": 0,
-            "battery_exceeded_drones": [],
-            "recharge_trips": 0,
-            "error": f"reset failed: {e}",
-            "elapsed_seconds": round(time.time() - t0, 2),
-        }
-        print(json.dumps(result), flush=True)
-        return result
+        log_end(success=False, steps=0, score=0.0, rewards=[0.0])
+        return {"task_id": task_id, "reward": 0.0, "error": f"reset failed: {e}"}
 
     n_drones = obs["num_drones"]
     depot = {"lat": obs["depot_lat"], "lon": obs["depot_lon"]}
 
-    # 2. LLM
+    # 2. Get LLM Prediction
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": build_user_prompt(obs)},
-            ],
-            temperature=0.1,
-            max_tokens=2000,
+            messages=[{"role": "system", "content": SYSTEM_PROMPT},
+                      {"role": "user", "content": build_user_prompt(obs)}],
+            temperature=0.1, max_tokens=2000,
         )
         llm_output = response.choices[0].message.content
     except Exception as e:
-        result = {
-            "type": "[END]",
-            "task_id": task_id,
-            "reward": 0.01,
-            "deliveries_completed": 0,
-            "total_deliveries": len(obs.get("delivery_locations", [])),
-            "battery_exceeded_drones": [],
-            "recharge_trips": 0,
-            "error": f"llm failed: {e}",
-            "elapsed_seconds": round(time.time() - t0, 2),
-        }
-        print(json.dumps(result), flush=True)
-        return result
+        err_msg = str(e).replace('\n', ' ')
+        log_end(success=False, steps=0, score=0.0, rewards=[0.0])
+        return {"task_id": task_id, "reward": 0.0, "error": f"llm failed: {err_msg}"}
 
-    # 3. Parse
+    # 3. Parse output
     try:
         drone_paths = parse_drone_paths(llm_output, n_drones, depot)
     except Exception as e:
-        result = {
-            "type": "[END]",
-            "task_id": task_id,
-            "reward": 0.01,
-            "deliveries_completed": 0,
-            "total_deliveries": len(obs.get("delivery_locations", [])),
-            "battery_exceeded_drones": [],
-            "recharge_trips": 0,
-            "error": f"parse failed: {e}",
-            "elapsed_seconds": round(time.time() - t0, 2),
-        }
-        print(json.dumps(result), flush=True)
-        return result
+        log_end(success=False, steps=0, score=0.0, rewards=[0.0])
+        return {"task_id": task_id, "reward": 0.0, "error": f"parse failed: {e}"}
 
-    # ── [STEP] ────────────────────────────────────────────────────────────────
-    print(json.dumps({
-        "type": "[STEP]",
-        "task_id": task_id,
-        "n_drones": n_drones,
-        "paths_summary": [
-            {"drone_id": p["drone_id"], "n_waypoints": len(p["waypoints"])}
-            for p in drone_paths
-        ],
-    }), flush=True)
-
-    # 4. Step
+    # 4. Step Environment
     try:
-        step_resp = requests.post(
-            f"{ENV_URL}/step",
-            json={"drone_paths": drone_paths},
-            timeout=30,
-        )
+        step_resp = requests.post(f"{ENV_URL}/step", json={"drone_paths": drone_paths}, timeout=30)
         step_resp.raise_for_status()
         step_data = step_resp.json()
     except Exception as e:
-        result = {
-            "type": "[END]",
-            "task_id": task_id,
-            "reward": 0.01,
-            "deliveries_completed": 0,
-            "total_deliveries": len(obs.get("delivery_locations", [])),
-            "battery_exceeded_drones": [],
-            "recharge_trips": 0,
-            "error": f"step failed: {e}",
-            "elapsed_seconds": round(time.time() - t0, 2),
-        }
-        print(json.dumps(result), flush=True)
-        return result
+        err_msg = str(e).replace('\n', ' ')
+        log_end(success=False, steps=0, score=0.0, rewards=[0.0])
+        return {"task_id": task_id, "reward": 0.0, "error": f"step failed: {err_msg}"}
 
-    obs_out = step_data.get("observation", {})
+    # 5. Extract Reward and Output Final Logs
     reward = float(step_data.get("reward", 0.01) or 0.01)
-    # Ensure strictly in (0, 1) — never exactly 0.0 or 1.0
-    reward = max(0.01, min(0.99, reward))
+    
+    # Ensure score is strictly clamped between 0.01 and 0.99
+    score = max(0.01, min(0.99, reward))
+    success = score > 0.05
 
-    # ── [END] ─────────────────────────────────────────────────────────────────
-    result = {
-        "type": "[END]",
+    # Log the step and end sequences (PLAIN TEXT)
+    log_step(step=1, action="submit_paths", reward=score, done=True, error=None)
+    log_end(success=success, steps=1, score=score, rewards=[score])
+
+    return {
         "task_id": task_id,
-        "reward": round(reward, 4),
-        "deliveries_completed": obs_out.get("deliveries_completed", 0),
-        "total_deliveries": obs_out.get("total_deliveries", 0),
-        "battery_exceeded_drones": obs_out.get("battery_exceeded_drones", []),
-        "recharge_trips": obs_out.get("recharge_trips", 0),
-        "per_drone_distance_km": obs_out.get("per_drone_distance_km", []),
-        "feedback": obs_out.get("feedback", ""),
-        "elapsed_seconds": round(time.time() - t0, 2),
+        "reward": score,
+        "elapsed_seconds": round(time.time() - t0, 2)
     }
-    print(json.dumps(result), flush=True)
-    return result
 
 
 def main():
@@ -267,49 +203,20 @@ def main():
         health = requests.get(f"{ENV_URL}/health", timeout=10).json()
         cities = health.get("supported_cities", ["Pune", "Mumbai", "Bangalore", "New York", "London", "Tokyo", "Dubai"])
     except Exception as e:
-        print(json.dumps({"type": "[ERROR]", "message": f"Health check failed: {e}"}), flush=True)
+        print(f"[ERROR] Health check failed: {e}", flush=True)
         sys.exit(1)
 
     all_results = []
     for city in cities:
         for difficulty in ["easy", "medium", "hard"]:
             task_id = f"{city.lower().replace(' ', '_')}_{difficulty}"
-            try:
-                r = run_task(task_id, city, difficulty)
-                all_results.append(r)
-            except Exception as e:
-                err = {
-                    "type": "[END]",
-                    "task_id": task_id,
-                    "reward": 0.01,
-                    "deliveries_completed": 0,
-                    "total_deliveries": 0,
-                    "battery_exceeded_drones": [],
-                    "recharge_trips": 0,
-                    "error": str(e),
-                    "elapsed_seconds": 0,
-                }
-                print(json.dumps(err), flush=True)
-                all_results.append(err)
+            r = run_task(task_id, city, difficulty)
+            all_results.append(r)
 
-    rewards = [r.get("reward", 0.01) for r in all_results]
-    avg_reward = sum(rewards) / len(rewards) if rewards else 0.01
-
-    print(json.dumps({
-        "type": "[SUMMARY]",
-        "total_tasks": len(all_results),
-        "average_reward": round(avg_reward, 4),
-        "min_reward": round(min(rewards), 4) if rewards else 0.01,
-        "max_reward": round(max(rewards), 4) if rewards else 0.01,
-        "per_task": [
-            {"task_id": r.get("task_id"), "reward": r.get("reward", 0.01)}
-            for r in all_results
-        ],
-    }), flush=True)
-
+    # We write out a local JSON file for your own records, 
+    # but the grader exclusively reads the plain-text STDOUT prints above!
     with open("inference_results.json", "w") as f:
         json.dump(all_results, f, indent=2)
-
 
 if __name__ == "__main__":
     main()
