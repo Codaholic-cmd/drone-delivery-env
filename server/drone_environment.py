@@ -393,6 +393,7 @@ class DroneDeliveryEnvironment:
         recharge_penalty = min(0.20, 0.04 * total_recharge_trips)
         efficiency_score = max(0, 0.20 - recharge_penalty)
         reward = round(delivery_score + battery_score + efficiency_score, 4)
+        reward = max(0.01, min(0.99, reward))
 
         heavy = [d for d in deliveries if d.weight_kg > capacity_kg and d.id not in skipped_deliveries]
         heavy_info = ""
