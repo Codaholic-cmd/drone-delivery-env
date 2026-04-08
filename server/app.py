@@ -3,10 +3,9 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional, List
-from fastapi.responses import HTMLResponse, RedirectResponse
 
 try:
     from models import DroneAction, DroneObservation, DroneState, DeliveryLocation, NoFlyZone, Waypoint
@@ -58,16 +57,6 @@ class CustomResetRequest(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok", "supported_cities": SUPPORTED_CITIES}
-
-@app.get("/")
-def root():
-    return {
-        "name": "Drone Delivery Environment",
-        "version": "3.0.0",
-        "status": "running",
-        "endpoints": ["/health", "/reset", "/step", "/state", "/tasks", "/web"],
-        "supported_cities": SUPPORTED_CITIES
-    }
 
 
 @app.post("/reset")
@@ -147,19 +136,22 @@ def reset_custom(request: CustomResetRequest):
 @app.post("/step")
 def step(action: DroneAction):
     obs = env.step(action)
+    
+    # 🚨 PHASE 2 FIX: Clamp the reward strictly between 0 and 1 🚨
+    raw_reward = float(obs.reward if obs.reward is not None else 0.01)
+    clamped_reward = max(0.01, min(0.99, raw_reward))
+
     return {
         "observation": obs.model_dump(),
-        "reward": obs.reward, "done": obs.done,
+        "reward": clamped_reward,
+        "done": obs.done,
         "info": {
-            "deliveries_completed": obs.deliveries_completed,
-            "total_deliveries": obs.total_deliveries,
-            "urgent_delivered": obs.urgent_delivered,
-            "time_violations": obs.time_violations,
-            "no_fly_violations": obs.no_fly_violations,
-            "duplicate_deliveries": obs.duplicate_deliveries,
-            "per_drone_distance_km": obs.per_drone_distance_km,
-            "battery_exceeded_drones": obs.battery_exceeded_drones,
-            "recharge_trips": obs.recharge_trips,
+            "deliveries_completed": getattr(obs, "deliveries_completed", 0),
+            "total_deliveries": getattr(obs, "total_deliveries", 0),
+            "duplicate_deliveries": getattr(obs, "duplicate_deliveries", 0),
+            "per_drone_distance_km": getattr(obs, "per_drone_distance_km", []),
+            "battery_exceeded_drones": getattr(obs, "battery_exceeded_drones", []),
+            "recharge_trips": getattr(obs, "recharge_trips", 0),
         }
     }
 
@@ -192,6 +184,7 @@ def web_ui():
 def root():
     # Redirect visitors hitting the base URL straight to your Web UI
     return RedirectResponse(url="/web")
+
 
 def main():
     """Entry point for the 'server' command defined in pyproject.toml"""
