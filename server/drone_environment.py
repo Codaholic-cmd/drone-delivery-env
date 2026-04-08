@@ -444,7 +444,7 @@ class DroneDeliveryEnvironment:
             drone_weight_capacity_kg=task.get("drone_weight_capacity_kg", 5.0),
             delivery_locations=task["deliveries"], no_fly_zones=[],
             battery_limit_km=task["battery_km"],
-            reward=0.0, done=True, feedback=f"ERROR: {msg}",
+            reward=0.01, done=True, feedback=f"ERROR: {msg}",
         )
 
     def state(self) -> DroneState:
